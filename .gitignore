@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto
+*.geojson
+*.qmd
+suppliers/
+MISC/
+shapefiles/

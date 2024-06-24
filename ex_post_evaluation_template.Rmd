@@ -1,0 +1,711 @@
+---
+title: "4C Ex-Post Evaluation for [PROJECT NAME]"
+subtitle: 'Project Proponent: [PROJECT PROPONENT]'
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    theme: spacelab
+    df_print: paged
+    toc: yes
+    toc_float: yes
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, warning=FALSE,message=FALSE
+)
+```
+
+```{r setup, echo=FALSE,warning=FALSE, message=FALSE}
+
+library(tidyverse)
+library(sf)
+library(reshape2)
+library(ggspatial)
+library(maps)
+library(mapdata)
+library(arrow)
+
+# _________ FILL IN THE BELOW SECTION AND THE TITLE __________
+
+project_name <- '[PROJECT NAME]' # the short name used for the files, e.g. gola
+project_fullname <- '[PROJECT FULL NAME]' # the full name to be used in the text, e.g. Gola Protected Area
+country <- '[PROJECT COUNTRY]'
+start_year <- '[START YEAR]' # this should be numeric
+evaluation_year <- '[EVALUATION YEAR]' # this should be numeric
+
+homedir <- 'C:/Users/Abby Williams/OneDrive - University of Cambridge/evaluations/'
+
+# _______________________________________________
+
+# TO DOWNLOAD NECESSARY PIPELINE OUTPUTS, RUN THE BELOW LINE IN A LOCAL TERMINAL ON VS CODE:
+
+# scp -r sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/{pairs,additionality.csv,stopping.csv,carbon-density.csv} homedir/projects/[PROJECT NAME]/data
+
+# REPLACE [YOUR CRSID] WITH YOUR CRSID
+# REPLACE [PROJECT NAME] WITH PROJECT NAME
+
+# _______________________________________________
+
+# set up necessary paths
+
+path <- paste0(homedir, 'suppliers/',project_name)
+setwd(path)
+
+path_to_pairs <- paste0(path,'/data/pairs')
+path_to_tidy_data <- paste0(path,'/tidy_data.csv')
+output_path <- paste0(path,'/outputs')
+shapefile <- read_sf(paste0(homedir,project_name,'.geojson'))
+
+
+```
+
+```{r read_pairs, echo=FALSE}
+
+# reading in the pairs
+
+if(!file.exists(path_to_tidy_data)){
+  
+  # get filenames and filter for matched points
+  
+  files_full_raw <- list.files(path_to_pairs,
+                           pattern='*.parquet',full.names=T,recursive=F)
+  files_full <- files_full_raw[!grepl('matchless',files_full_raw)]
+  files_short_raw <- list.files(path=path_to_pairs,
+                            pattern='*.parquet',full.names=F,recursive=F)
+  files_short <- files_short_raw[!grepl('matchless',files_short_raw)]
+  
+  # initialise dfs
+  
+  vars <- c(colnames(read_parquet(files_full[1])),'pair')
+  paired_data_raw <- data.frame(matrix(ncol=length(vars),nrow=0))
+  colnames(paired_data_raw) <- vars
+  paired_data_raw$pair <- as.factor(paired_data_raw$pair)
+  
+  for(j in 1:length(files_full)){
+    
+    # read in all parquet files for a given project
+    
+    f <- data.frame(read_parquet(files_full[j]))
+    
+    # add identity column
+    
+    f$pair <- as.factor(c(replicate(nrow(f),files_short[j])))
+    
+    # append data to bottom of df
+    
+    paired_data_raw <- bind_rows(paired_data_raw,f)
+    
+  }
+  
+  # generate separate datasets for project and counterfactual 
+  
+  project <- paired_data_raw %>% dplyr::select(starts_with('k'),pair)
+  cf <- paired_data_raw %>% dplyr::select(starts_with('s'),pair)
+  
+  # create project-counterfactual merged dataset
+  
+  colnames(cf) <- colnames(project)
+  pair_merged <- bind_rows(project,cf)
+  names(pair_merged) <- str_sub(names(pair_merged),3)
+  names(pair_merged)[names(pair_merged) == "ir"] <- "pair"
+  data <- pair_merged %>% select_if(~ !any(is.na(.)))
+
+  # merge reference data to cf-counterfactual merged dataset with type column
+
+  type <- c(replicate(nrow(project),'Project'),replicate(nrow(cf),'Counterfactual'))
+  data$type <- type
+  
+  # write data to csv
+  
+  write.csv(data,path_to_tidy_data,row.names=F)
+  
+} else {
+  
+  data <- read.csv(path_to_tidy_data)
+  
+}
+
+
+```
+
+```{r read_additionality, echo = FALSE}
+
+# reading in additionality
+
+additionality <- read.csv(paste0('./data/',project_name,'additionality.csv'))
+
+```
+
+```{r read_stopping_criteria, echo=FALSE}
+
+# reading in stopping criteria
+
+stopping <- read.csv(paste0('./data/stopping.csv'))
+
+
+```
+
+```{r get_shapefile_area, echo=FALSE}
+
+# extracting area of shapefile
+  
+project_area_ha <- as.numeric(sum(st_area(shapefile))/10000)
+
+
+```
+
+\
+
+# About the project
+
+`r project_fullname` is located in `r country`. The project started in `r start_year` and has an area of `r format(project_area_ha, big.mark = ",", scientific = FALSE, digits = 3)` hectares.
+
+```{r echo=FALSE}
+
+# ________________ FILL IN PROJECT-SPECIFIC INFORMATION __________________
+
+# Replace this chunk with a short narrative about the context of the project and why it was chosen for evaluation by 4C. Include any other details relevant to the interpretation of this document.
+
+```
+
+
+
+\
+
+# Introduction to the 4C methodology
+
+The 4C method for calculating the additionality of a project is based on pixel matching. This approach allows us to identify places which are similar to the project but are not protected. We can then measure deforestation in these places and use this as our counterfactual scenario (what would have happened in the absence of the project) against which we measure the impact that the project has had.
+
+More information about the 4C methodology can be found below.
+
+[4C explainer page](https://4c.cst.cam.ac.uk/about/additionality-leakage-and-permanence)
+
+[Quantify Earth, an interactive platform which demonstrates our pixel-matching approach in action](https://staging.quantify.earth/#/1201)
+
+[Cambridge Carbon Impact: an evaluation of some existing carbon projects](https://www.cambridge.org/engage/coe/article-details/6409c345cc600523a3e778ae)
+
+[The full PACT methodology](https://www.cambridge.org/engage/api-gateway/coe/assets/orp/resource/item/647a14a14f8b1884b7b97b55/original/pact-tropical-moist-forest-accreditation-methodology.pdf)
+
+\
+
+# Additionality summary
+
+The graph below shows the annual trend in additionality from 10 years before the project start to the present day. The solid grey vertical line represents the project start, whilst the dashed grey horizontal line represents 0 additionality (i.e. no avoided deforestation). Above this line, the project has experienced less forest carbon loss than the counterfactual; below this line, it has experienced more forest carbon loss than the counterfactual.
+
+\
+
+```{r additionality_summary, echo=FALSE}
+
+additionality %>% ggplot(aes(x = year, y = additionality)) +
+  geom_vline(xintercept = start_year, alpha = 0.4) +
+  geom_hline(yintercept = 0, alpha = 0.4, linetype = 'dashed') +
+  #annotate(geom='text',x=start_year,y=10000,label='Project start',size=5,colour='grey50')+
+  geom_line() +
+  xlab('Year') +
+  ylab(expression(paste('Additionality (Mg ',  CO[2], "e)", sep = '')))+
+  theme_classic()
+
+```
+
+\
+
+Raw values are also presented below.
+
+\
+
+```{r echo=FALSE}
+
+additionality %>% rename(Additionality = additionality, Year = year)
+
+```
+
+\
+
+# Detailed explanation of results
+
+The following sections will detail how we arrived at the additionality results, including the location and quality of the matched points, the deforestation rates in each set, and the carbon density values used to convert these deforestation rates to carbon emissions reductions.
+
+\
+
+### Number of iterations
+
+```{r echo=FALSE, message=FALSE}
+
+# INCLUDE CODE FOR NO. OF ITERATIONS HERE
+
+```
+
+
+### Location of matched points
+
+We sampled `r format((nrow(data)/2), big.mark = ",", scientific = FALSE, digits = 3)` points within the project and an equal number of matching points from outside of the project. These matching points serve as our counterfactual scenario for deforestation.
+
+Below we show the location of the counterfactual matching points (shown in blue) relative to the project (shown in red), both at the country and project scale.
+
+\
+
+```{r match_locations, warning=FALSE, echo=FALSE, message=FALSE}
+
+# plot location of matching points
+
+world <- fortify(map("worldHires", fill=TRUE, plot=FALSE))
+country_map <- world %>% filter(region==country)
+
+ggplot(data,aes(x=lng,y=lat,colour=type)) + 
+  geom_map(data=country_map,map=country_map,aes(x=long,y=lat,map_id=region),
+           colour='black',fill='grey90',linewidth=1.2)+
+  geom_point(alpha=0.5) + 
+  geom_sf(data=shapefile,fill='red',colour=NA,inherit.aes=F)+
+  scale_color_manual(values=c('blue','red'))+
+  coord_sf()+
+  theme_void()+
+  annotation_scale(text_cex=1.5,location='tl')+
+  theme(legend.title = element_blank(),
+        text=element_text(size=20))
+
+xmin <- filter(data, type=='Project') %>% select(lng) %>% min()
+xmax <- filter(data, type=='Project') %>% select(lng) %>% max()
+ymin <- filter(data, type=='Project') %>% select(lat) %>% min()
+ymax <- filter(data, type=='Project') %>% select(lat) %>% max()
+
+ggplot(data,aes(x=lng,y=lat,colour=type)) + 
+  geom_map(data=country_map,map=country_map,aes(x=long,y=lat,map_id=region),
+           colour='black',fill='grey90',linewidth=1.2)+
+  geom_point(alpha=0.5) + 
+  geom_sf(data=shapefile,fill='red',colour=NA,inherit.aes=F)+
+  scale_color_manual(values=c('blue','red'))+
+  coord_sf(xlim=c(xmin-0.5,xmax+0.5),ylim=c(ymin-0.5,ymax+0.5))+
+  theme_void()+
+  annotation_scale(text_cex=1.5,location='tl')+
+  theme(legend.title = element_blank(),
+        text=element_text(size=16),
+        legend.position='none')
+
+```
+
+\
+
+### Quality of matches
+
+Here we show how well the matching points align with the project in terms of our matching variables. Correspondence between the project (shown in red in the plots below) and the counterfactual (shown in blue) indicates that the counterfactual will faithfully represent the business-as-usual scenario for places like the project.
+
+-   Inaccessibility (motorized travel time to healthcare, minutes)
+
+-   Slope ($^\circ$)
+
+-   Elevation (meters)
+
+-   Forest cover at t0 (project start, %)
+
+-   Deforestation at t0 (%)
+
+-   Forest cover at t-5 (5 years prior to project start, %)
+
+-   Deforestation at t-5 (%)
+
+-   Forest cover at t-10 (10 years prior to project start, %)
+
+-   Deforestation at t-10 (%)
+
+Forest cover and deforestation are measured as the proportion of pixels within a 1km radius of a particular point which are classified either as undisturbed forest (in the case of forest cover) or deforested (in the case of deforestation) by the JRC Tropical Moist Forest dataset.
+
+More information about the datasets we use can be found below:
+
+[MAP access to healthcare](https://malariaatlas.org/project-resources/accessibility-to-healthcare/)
+
+[SRTM elevation data](https://www.earthdata.nasa.gov/sensors/srtm)
+
+[JRC tropical moist forest dataset](https://forobs.jrc.ec.europa.eu/TMF)
+
+\
+
+```{r match_quality, warning=FALSE,message=FALSE, echo=FALSE}
+
+# plot matches
+
+source(paste0(homedir,'/scripts/plot_matchingvars.R'))
+
+plot_matching_variables(data)
+
+```
+
+\
+
+### Standardised mean differences
+
+We can quantify the similarity in matching variables in terms of their standardised mean difference (SMD). An SMD of \< 0.25 indicates that points are well-matched for that particular variable.
+
+In the below plot, the blue points indicate the SMD value (i.e. the amount of difference between the project and counterfactual) for each variable. The grey dotted lines at (-0.25, +0.25) represent the boundary within which our differences would ideally fall in order for the project and counterfactual to be considered well-matched.
+
+\
+
+```{r smd, echo=FALSE, warning=FALSE,message=FALSE}
+
+source(paste0(homedir,'/scripts/std_mean_diff.R'))
+
+# cacheing results
+
+if(file.exists('std_mean_diff.csv')){
+  std_mean_diff_results <- read.csv('std_mean_diff.csv')
+} else {
+  std_mean_diff_results <- std_mean_diff(data,start_year)
+  write.csv(std_mean_diff_results,'std_mean_diff.csv',row.names=F)
+}
+
+
+# standardising variable names
+
+std_mean_diff_std <- data.frame(std_mean_diff_results)
+std_mean_diff_std$variable <- as.character(std_mean_diff_std$variable)
+
+
+  start_pos <- 1
+
+  std_mean_diff_std[start_pos,1] <- 'JRC_1_t0'
+  std_mean_diff_std[start_pos+1,1] <- 'JRC_1_t-5'
+  std_mean_diff_std[start_pos+2,1] <- 'JRC_1_t-10'
+
+  std_mean_diff_std[start_pos+3,1] <- 'JRC_3_t0'
+  std_mean_diff_std[start_pos+4,1] <- 'JRC_3_t-5'
+  std_mean_diff_std[start_pos+5,1] <- 'JRC_3_t-10'
+
+
+# ordering variables
+
+std_mean_diff_std$variable <- factor(std_mean_diff_std$variable,
+                                     levels=c('JRC_3_t-10','JRC_3_t-5','JRC_3_t0',
+                                              'JRC_1_t-10','JRC_1_t-5','JRC_1_t0',
+                                              'access','slope','elevation'))
+
+# changing sign for interpretation
+
+std_mean_diff_std$std_mean_diff <- (-1)*std_mean_diff_std$std_mean_diff
+
+# plotting
+
+std_mean_diff_plot <- ggplot(std_mean_diff_std,aes(x=std_mean_diff,y=variable))+
+  #geom_boxplot(outlier.shape=NA,colour='blue')+
+  geom_point(colour='blue',fill='blue',alpha=0.3,size=4)+
+  geom_vline(xintercept=0)+
+  geom_vline(xintercept=0.25,lty=2,colour='grey30')+
+  geom_vline(xintercept=-0.25,lty=2,colour='grey30')+
+  scale_y_discrete(labels=c(bquote(Deforestation~t[-10]~("%")),
+                            bquote(Deforestation~t[-5]~("%")),
+                            bquote(Deforestation~t[0]~("%")),
+                            bquote(Forest~cover~t[-10]~("%")),
+                            bquote(Forest~cover~t[-5]~("%")),
+                            bquote(Forest~cover~t[0]~("%")),
+                            'Inaccessibility (mins)',paste0('Slope (',intToUtf8(176),')'),'Elevation (m)'))+
+  xlab('Standardised mean difference')+
+  xlim(-1,1)+
+  theme_classic()+
+  theme(axis.title.y=element_blank(),
+        legend.title=element_blank(),
+        legend.box.background=element_rect(),
+        legend.position='none',
+        text=element_text(size=20),
+        axis.text.y=element_text(size=20))
+
+std_mean_diff_plot
+
+
+
+
+```
+
+\
+
+### Deforestation within the project
+
+Now focusing on deforestation within the project, we can examine the spatial distribution of the following 4 processes pertinent to forest carbon stock changes:
+
+-   Undisturbed forest to degraded forest (yellow)
+
+-   Degraded forest to deforested land (orange)
+
+-   Undisturbed forest to deforested land (red)
+
+-   Undisturbed land to reforested land (did not occur in the period examined)
+
+\
+
+These transitions are shown in the plot below for the `r evaluation_year-start_year`-year period between `r start_year` and `r evaluation_year`. They are overlaid on the project area, shown in grey.
+
+Data from [JRC tropical moist forest dataset](https://forobs.jrc.ec.europa.eu/TMF).
+
+\
+
+```{r deforestation_spatial_distribution, echo=FALSE, warning=FALSE}
+
+# plot deforestation within project
+
+source(paste0(homedir,'/scripts/plot_transitions.R'))
+
+plot_transitions(data=data,t0=start_year,period_length=evaluation_year-start_year,shapefile=shapefile)
+
+
+```
+
+\
+
+### Deforestation and degradation rates within project and counterfactual
+
+Here we compare various deforestation processes between the project and counterfactual. We present average annual rates measured between `r start_year` and `r evaluation_year`.
+
+\
+
+```{r proportions_undisturbed_degraded, echo=FALSE}
+
+# obtaining the area of undisturbed and degraded forest at t0, for use later
+
+source(paste0(homedir,'/scripts/def_rate.R'))
+
+prop_und <- get_prop_undisturbed(data=data,t0=start_year)
+prop_deg <- get_prop_degraded(data=data,t0=start_year)
+
+```
+
+***Rate of forest loss, %/year***
+
+First we can calculate the average annual rate at which undisturbed forest is lost. This refers to the % loss of undisturbed tropical moist forest per year, i.e. it is relative to the amount of tropical moist forest present at the beginning of the project.
+
+```{r rate_of_forest_loss_percent, echo=FALSE}
+
+source(paste0(homedir,'/scripts/def_rate.R'))
+  
+df <- def_rate(data=data,t0=start_year,period_length=evaluation_year-start_year)
+
+df %>% t() %>% data.frame() %>% rename('Rate of forest loss (%/year)' = 1)
+
+```
+
+\
+
+***Separate deforestation and degradation processes, %/year***
+
+The rate of forest loss can be broken down into more specific processes, presented in the table below:
+
+-   degradation of undisturbed forest
+
+-   deforestation of undisturbed forest
+
+-   deforestation of degraded forest
+
+-   reforestation of undisturbed forest
+
+
+\
+
+```{r separate_deforestation_processes_percent, echo=FALSE}
+
+source(paste0(homedir,'/scripts/def_rate.R'))
+  
+df_sep <- def_rate_seperate(data=data,t0=start_year,period_length=evaluation_year-start_year)
+
+df_sep
+
+```
+
+\
+
+We can also convert these deforestation rates to hectares per using the following formula:
+
+\
+
+$$ {\text{Deforestation rate (hectares/year)}} =
+\left( \frac{\text{Deforestation rate (%/year)}}{100} \right) \times \text{Project area (hectares)} \times \text{Proportion of forest type present at } t_0
+$$
+
+\
+
+It is necessary to correct for the amount of each forest type (undisturbed or degraded) present at the beginning of the project. For `r project_fullname` these proportions are as follows:
+
+-   Undisturbed forest: `r format(100*prop_und, digits = 3)`%
+
+-   Degraded forest: `r format(100*prop_deg, digits = 3)`%
+
+The rates of overall forest loss and individual deforestation processes are shown in hectares in the tables below.
+
+\
+
+***Rate of forest loss, hectares/year***
+
+```{r rate_of_forest_loss_ha, echo=FALSE}
+
+df_ha <- df
+
+df_ha[1,1:2] <- (df_ha[1,1:2]/100)*project_area_ha*prop_und
+
+colnames(df_ha) <- c('Project','Counterfactual')
+
+df_ha %>% t() %>% data.frame() %>% rename('Rate of forest loss (ha/year)' = 1)
+
+```
+
+\
+
+***Separate deforestation and degradation processes, hectares/year***
+
+```{r separate_deforestation_processes_ha, echo=FALSE}
+
+source(paste0(homedir,'/scripts/def_rate.R'))
+
+df_sep_ha <- df_sep
+
+df_sep_ha[df_sep_ha$`Forest type`=='Undisturbed forest',4] <- (df_sep_ha[df_sep_ha$`Forest type`=='Undisturbed forest',4]/100)*project_area_ha*prop_und
+
+df_sep_ha[df_sep_ha$`Forest type`=='Disturbed forest',4] <- (df_sep_ha[df_sep_ha$`Forest type`=='Disturbed forest',4]/100)*project_area_ha*prop_deg
+
+df_sep_ha %>% rename('Rate (ha/year)' = 4)
+
+
+```
+
+\
+
+***Land cover changes over time***
+
+Presenting the above data in another way, we can visualise the year-on-year change in different land cover classes (undisturbed forest, degraded forest, deforested land and regrowth) for both the project and the counterfactual.
+
+In the below plots, the vertical grey dashed line represents the start year of the project.
+
+```{r luc_timeseries_all, echo=FALSE}
+
+source(paste0(homedir,'/scripts/land_cover_timeseries.R'))
+
+df <- get_luc_timeseries(data,t0=start_year,tend=evaluation_year)
+
+df %>% mutate(
+  luc = as.factor(luc),
+  year = as.numeric(year)) %>% 
+  ggplot(aes(x=year,y=percentage,colour=luc,lty=type))+
+  geom_line(linewidth=1.5,alpha=0.5)+
+  geom_vline(xintercept=start_year,lty=2,colour='grey30')+
+  scale_colour_manual(values=c('darkgreen','gold2','orange3','steelblue2'),
+                      name='Land Use Class',labels=c('Undisturbed forest','Degraded forest','Deforested land','Regrowth'))+
+  scale_linetype_manual(name='Location',values=c('solid','dotted'),breaks=c('Project','Counterfactual'))+
+  xlab('Year')+
+  ylab('% cover')+
+  theme_classic()
+
+```
+
+\
+
+***Land cover changes over time: undisturbed forest only***
+
+Zooming in on the trend in **undisturbed forest** cover for project and counterfactual (shown in green in the plot above), we expect the trends in forest cover to be parallel prior to the project start (indicating that they are well-matched) but diverging after the project start, indicating a measurable reduction in deforestation under the project scenario.
+
+Here the trajectories are shown in red (project) and blue (counterfactual). They show the mean and 95% confidence intervals of % undisturbed tropical moist forest cover, calculated across the 100 sets of points we generate as part of our bootstrapping procedure. More details about this algorithm are available in the [PACT Methodology](https://www.cambridge.org/engage/api-gateway/coe/assets/orp/resource/item/647a14a14f8b1884b7b97b55/original/pact-tropical-moist-forest-accreditation-methodology.pdf).
+
+\
+
+
+```{r luc_timeseries, echo=FALSE}
+
+source(paste0(homedir,'/scripts/land_cover_timeseries.R'))
+
+# caching result of land cover time series
+
+if (file.exists('luc_timeseries.csv')) {
+  result <- read.csv('luc_timeseries.csv')
+} else {
+  result <- luc_class1_uncertainty(data=data, t0=start_year, tend=evaluation_year)
+  write.csv(result,'luc_timeseries.csv',row.names=F)
+}
+
+# calculating stats + plotting
+
+result %>%
+  group_by(type,year) %>%
+  summarise(mean=mean(percent_class1),
+            se = sd(percent_class1) / sqrt(n()), # Standard error
+            t_critical = qt(0.975, df = n() - 1), # Critical t-value for 95% CI
+            ci_lower = mean - t_critical * se,
+            ci_upper = mean + t_critical * se,
+            .groups = 'drop') %>% 
+  ggplot(aes(x = year, y = mean, color = type)) +
+  geom_line(size = 1) + # Line for the mean
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = type), alpha = 0.2) + # Confidence interval ribbon
+  labs(
+       x = "Year",
+       y = "% undisturbed forest") +
+  theme_classic() +
+  geom_vline(xintercept=start_year,lty=2,colour='grey30')+
+  scale_color_manual(values = c("Project" = "red", "Counterfactual" = "blue")) + 
+  scale_fill_manual(values = c("Project" = "red", "Counterfactual" = "blue")) +
+  theme(legend.title = element_blank())
+
+
+```
+
+\
+
+### Carbon densities
+
+In order to calculate additionality, the deforestation rates are converted to carbon emissions rates using regional carbon density values generated through NASA GEDI data. These are presented in the table below for each land use class, each of which is associated with a different carbon density value. 
+
+More information on GEDI data is available [here](https://www.earthdata.nasa.gov/sensors/gedi).
+
+\
+
+```{r carbon_density, echo=FALSE}
+
+carbon_density <- read.csv(paste0(path,'/data/',project_name,'carbon-density.csv'))
+
+carbon_density <- carbon_density %>% mutate(
+  land.use.class = case_when(
+    land.use.class == 1 ~ 'Undisturbed',
+    land.use.class == 2 ~ 'Degraded',
+    land.use.class == 3 ~ 'Deforested',
+    land.use.class == 4 ~ 'Reforested',
+    land.use.class == 5 ~ 'Water',
+    land.use.class == 6 ~ 'Other')
+  )
+
+
+colnames(carbon_density) <- c('Land Use Class', 'Carbon Density (Mg/Ha)')
+
+carbon_density
+
+```
+
+\
+
+The additionality summary presented at the top of this document is based on the difference in the carbon loss estimates between the project and the counterfactual scenario.
+
+\
+
+### Stability of results
+
+We can evaluate the stability of the results generated by the pipeline. This graph shows the variability of the result over the 100 iterations that the pipeline generates. For results to be valid, we would expect the variability to be close to 0 by the time the 100 iterations have finished.
+
+```{r stopping, echo=FALSE}
+
+stopping %>% ggplot(aes(x = iteration, y = stable)) +
+  geom_hline(yintercept = 0, alpha = 0.4, linetype = 'dashed') +
+  geom_line() +
+  xlab('Iteration') +
+  ylab('Variability')+
+  theme_classic()
+
+```
+
+\
+
+
+# Statement on leakage and permanence
+
+Leakage and permanence are two factors that affect the long-term emissions reductions contributed by a project but **have not been included in this evaluation**.
+
+**Leakage** is the displacement of activities which deplete forest carbon stocks from the project to other areas due to the implementation of the project. In the worst case scenario, 100% of these activities are displaced, effectively nullifying the additionality of the project. Leakage can be reduced by interventions which remove the incentive to continue activities which deplete forest carbon stocks in areas outside of the project.
+
+**Permanence** is the ability of a project to protect carbon stocks long-term. Carbon stored in forests is inherently impermanent, given the finite lifespan of trees and the potential for deforestation and catastrophic events such as wildfires. The estimates given in this evaluation assume that all carbon stored is permanent, but in reality this is unlikely to be the case.
+
+\
+
+You can find out more about our plans to deal with leakage and permanence in our [explainer page](https://4c.cst.cam.ac.uk/about/additionality-leakage-and-permanence), and in [the full PACT methodology](https://www.cambridge.org/engage/api-gateway/coe/assets/orp/resource/item/647a14a14f8b1884b7b97b55/original/pact-tropical-moist-forest-accreditation-methodology.pdf).
+
+$$\\[1in]$$
