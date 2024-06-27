@@ -6,6 +6,10 @@
 .quarto
 *.geojson
 *.qmd
+*.html
 suppliers/
 MISC/
 shapefiles/
+/scripts/*OLD*
+/R
+!R/*template*

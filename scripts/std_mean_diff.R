@@ -1,137 +1,57 @@
 
-library(tidyverse)
-library(magrittr)
-library(arrow)
-library(sf)
-library(stringr)
-library(MatchIt)
+std_mean_diff <- function(path_to_pairs) {
+  
+  # clean data
 
-# secondary functions
+  files_full_raw <- list.files(path_to_pairs,
+                               pattern='*.parquet',full.names=T,recursive=F)
+  files_full <- files_full_raw[!grepl('matchless',files_full_raw)]
+  files_short_raw <- list.files(path=path_to_pairs,
+                                pattern='*.parquet',full.names=F,recursive=F)
+  files_short <- files_short_raw[!grepl('matchless',files_short_raw)]
+  
+  # initialise dfs
+  
+  vars <- c(colnames(read_parquet(files_full[1])),'pair')
+  df <- data.frame(matrix(ncol=length(vars),nrow=0))
+  colnames(df) <- vars
+  
+  for(j in 1:length(files_full)){
+    
+    # read in all parquet files for a given project
+    
+    f <- data.frame(read_parquet(files_full[j]))
+    
+    # append data to bottom of df
+    
+    df <- bind_rows(df,f)
+    
+  }
 
-cpc_rename<-function(x, t0){
-  x %<>% 
-    as.data.frame() %>%
-    select(starts_with('cpc'))
-  mycolnames<-colnames(x)
-  years<-mycolnames %>% str_extract('[:digit:]+') %>% as.numeric()
-  suffix<-mycolnames %>% str_extract('_u|_d') %>%
-    str_replace('u', '1') %>%
-    str_replace('d', '3')
-  newnames<-paste0('JRC', t0-years, suffix)
-  colnames(x)<-newnames
-  return(x)
+  # calculate smd
+
+  smd_results <- data.frame(variable = character(), smd = numeric(), stringsAsFactors = FALSE)
+  
+  variables <- c('cpc10_d','cpc5_d','cpc0_d',
+                 'cpc10_u','cpc5_u','cpc0_u',
+                 'access','slope','elevation')
+    
+    for (var in variables) {
+      k_var <- df[[paste0("k_", var)]]
+      s_var <- df[[paste0("s_", var)]]
+      
+      k_mean <- mean(k_var, na.rm = TRUE)
+      s_mean <- mean(s_var, na.rm = TRUE)
+      k_sd <- sd(k_var, na.rm = TRUE)
+      s_sd <- sd(s_var, na.rm = TRUE)
+      
+      pooled_sd <- sqrt((k_sd^2 + s_sd^2) / 2)
+      smd <- (k_mean - s_mean) / pooled_sd
+      
+      smd_results <- rbind(smd_results, data.frame(variable = var, smd = smd, stringsAsFactors = FALSE))
+    }
+    
+  return(smd_results)
 }
-
-tmfemi_reformat<-function(df, t0){
-  df %<>%
-    st_as_sf(coords = c("lng","lat")) %>%
-    rename_with(~ gsub("luc_", "JRC", .x, fixed = TRUE))
   
-  other<-df %>% select(-starts_with('cpc'))
   
-  cpcs<-df %>%
-    select(starts_with('cpc')) %>%
-    cpc_rename(t0 = t0)
-  
-  df<-cbind(df, cpcs)
-  # JRC2002_1 = cpc10_u,
-  # JRC2007_1 = cpc5_u,
-  # JRC2012_1 = cpc0_u,
-  # JRC2002_3 = cpc10_d,
-  # JRC2007_3 = cpc5_d,
-  # JRC2012_3 = cpc0_d) %>%
-  
-  if(any(colnames(df) %>% str_detect('ecoregion')))
-    df %<>% rename(biome = ecoregion)
-  return(df)
-}
-
-make_match_formula<-function(prefix,
-                             t0,
-                             match_years,
-                             match_classes, 
-                             suffix){
-  
-  # generate the match variables:
-  match_var_grid<-expand.grid(prefix = prefix, 
-                              years = t0 + match_years, # the years to match on
-                              # match_years should be zero 
-                              # or negative
-                              classes = match_classes, 
-                              suffix = "")
-  
-  match_vars<-apply(match_var_grid, 1, function(x){
-    paste(x['prefix'], x['years'], '_', x['classes'], x['suffix'], sep='')
-    # %>% str_replace('(^_|_$)', '')
-  }) %>% 
-    c("access", "elevation", "slope")
-  
-  # the match formula
-  fmla <- as.formula(paste("treatment ~ ", paste(match_vars, collapse= "+")))
-  
-  return(fmla)
-}
-
-assess_balance<-function(pts, class_prefix, t0, match_years, match_classes){
-  fmla<-make_match_formula(prefix = class_prefix,
-                           t0 = t0,
-                           match_years = match_years,
-                           match_classes = match_classes,
-                           suffix = '')
-  
-  matchit(
-    fmla,
-    method = 'nearest',
-    distance = 'mahalanobis',
-    ratio = 1,
-    order = 'smallest',
-    replace = FALSE,
-    discard = 'none',
-    data = pts %>% 
-      as.data.frame %>% 
-      mutate(treatment = ifelse(type == "Project", 1, 0))
-  )
-}
-
-# primary function
-
-class_prefix <- 'JRC'
-match_years <- c(0, -5, -10)
-match_classes <- c(1,3)
-
-std_mean_diff <- function(all_data,t0) {
-  
-  # filter data
-  
-  project<-all_data %>% 
-    filter(type=='Project') %>% 
-    tmfemi_reformat(t0=t0)
-  
-  cf<-all_data %>% 
-    filter(type=='Counterfactual') %>% 
-    tmfemi_reformat(t0=t0)
-  
-  # run assess_balance
-  
-  pts<-rbind(project,cf)
-  output<- assess_balance(pts, class_prefix, t0, match_years, match_classes)
-  
-  # extracting std mean differences from outputs
-  
-  df <- data.frame(summary(output)$sum.matched[,3]) %>% 
-    rownames_to_column()
-  rownames(df) <- NULL
-  colnames(df) <- c('variable','cf_output')
-  
-  # formatting df for return
-  
-  df_melt <- melt(df)
-  colnames(df_melt) <- c('variable','type','std_mean_diff')
-  df_final <- df_melt %>% select(-type)
-  return(df_final)
-  
-}
-
-
-
-

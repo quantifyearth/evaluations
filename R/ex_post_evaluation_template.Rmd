@@ -1,23 +1,20 @@
 ---
 title: "4C Ex-Post Evaluation for [PROJECT NAME]"
-subtitle: 'Project Proponent: [PROJECT PROPONENT]'
+subtitle: "Project Proponent: [PROJECT PROPONENT]"
 output:
-  pdf_document:
-    toc: yes
   html_document:
     theme: spacelab
     df_print: paged
     toc: yes
     toc_float: yes
+  pdf_document:
+    toc: yes
 ---
 
-```{r, include=FALSE}
+```{r settings, include=FALSE}
 knitr::opts_chunk$set(
   echo = FALSE, warning=FALSE,message=FALSE
 )
-```
-
-```{r setup, echo=FALSE,warning=FALSE, message=FALSE}
 
 library(tidyverse)
 library(sf)
@@ -26,46 +23,75 @@ library(ggspatial)
 library(maps)
 library(mapdata)
 library(arrow)
+library(rnaturalearth)
+library(rnaturalearthdata)
 
-# _________ FILL IN THE BELOW SECTION AND THE TITLE __________
+```
 
-project_name <- '[PROJECT NAME]' # the short name used for the files, e.g. gola
-project_fullname <- '[PROJECT FULL NAME]' # the full name to be used in the text, e.g. Gola Protected Area
-country <- '[PROJECT COUNTRY]'
-start_year <- '[START YEAR]' # this should be numeric
-evaluation_year <- '[EVALUATION YEAR]' # this should be numeric
+```{r inputs, echo=FALSE,warning=FALSE, message=FALSE}
 
-homedir <- 'C:/Users/Abby Williams/OneDrive - University of Cambridge/evaluations/'
+# FILL IN THE TITLE AND THE SECTION BELOW 
 
-# _______________________________________________
+project_name <- '' # the short name used for the files, e.g. gola
+project_fullname <- '' # the full name to be used in the text, e.g. Gola Protected Area
+country <- '' # country must correspond to a country in the naturalearthdata package. Check by running from the console:
+start_year <- '' # as numeric
+evaluation_year <- '' # as numeric
+homedir <- ('C:/Users/Abby Williams/OneDrive - University of Cambridge/evaluations') # path to your evaluations folder
+# 
+```
 
-# TO DOWNLOAD NECESSARY PIPELINE OUTPUTS, RUN THE BELOW LINE IN A LOCAL TERMINAL ON VS CODE:
-
-# scp -r sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/{pairs,additionality.csv,stopping.csv,carbon-density.csv} homedir/projects/[PROJECT NAME]/data
-
-# REPLACE [YOUR CRSID] WITH YOUR CRSID
-# REPLACE [PROJECT NAME] WITH PROJECT NAME
-
-# _______________________________________________
+```{r directory_structure, echo=FALSE,warning=FALSE, message=FALSE}
 
 # set up necessary paths
 
-path <- paste0(homedir, 'suppliers/',project_name)
-setwd(path)
+script_path <- paste0(homedir,'/scripts')
+supplier_path <- paste0(homedir,'/suppliers/',project_name)
+data_path <- paste0(supplier_path,'/data')
+output_path <- paste0(supplier_path,'/outputs')
+shapefile <- read_sf(paste0(homedir,'/shapefiles/',project_name,'.geojson'))
 
-path_to_pairs <- paste0(path,'/data/pairs')
-path_to_tidy_data <- paste0(path,'/tidy_data.csv')
-output_path <- paste0(path,'/outputs')
-shapefile <- read_sf(paste0(homedir,project_name,'.geojson'))
+path_list <- c(supplier_path,data_path,output_path)
+for(i in path_list){
+  if(!dir.exists(i))
+    dir.create(i)
+}
 
 
 ```
+
+```{r sherwood_commands, include=FALSE}
+
+# FILL IN YOUR CRSID AND RUN THIS CHUNK
+
+crsid <- 'aew85'
+
+paths <- c(
+  "Upload shapefile: scp \"[PATH]/shapefiles/[PROJECT NAME].geojson\" sherwood:/maps/[YOUR CRSID]/projects",
+  "Download additionality: scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/additionality.csv \"[PATH]/suppliers/[PROJECT NAME]/data\"",
+  "Download carbon density: scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/carbon-density.csv \"[PATH]/suppliers/[PROJECT NAME]/data\"",
+  "Download pairs: scp -r sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/pairs \"[PATH]/suppliers/[PROJECT NAME]/data\"",
+  "Download stability (optional): scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/stopping.csv \"[PATH]/suppliers/[PROJECT NAME]/data\""
+)
+
+paths_replaced <- gsub("\\[YOUR CRSID\\]", crsid, paths)
+paths_replaced <- gsub("\\[PATH\\]", homedir, paths_replaced)
+paths_replaced <- gsub("\\[PROJECT NAME\\]", project_name, paths_replaced)
+
+paths_result <- paste(paths_replaced, collapse = "\n")
+
+# NOW RUN cat(paths_result) FROM THE CONSOLE TO PRINT THE PATHS
+
+```
+
 
 ```{r read_pairs, echo=FALSE}
 
 # reading in the pairs
 
-if(!file.exists(path_to_tidy_data)){
+path_to_pairs <- file.path(data_path,'pairs')
+
+if(!file.exists(file.path(output_path,'tidy_data.csv'))){
   
   # get filenames and filter for matched points
   
@@ -119,11 +145,11 @@ if(!file.exists(path_to_tidy_data)){
   
   # write data to csv
   
-  write.csv(data,path_to_tidy_data,row.names=F)
+  write.csv(data,file.path(output_path,'tidy_data.csv'),row.names=F)
   
 } else {
   
-  data <- read.csv(path_to_tidy_data)
+  data <- read.csv(file.path(output_path,'tidy_data.csv'))
   
 }
 
@@ -134,24 +160,16 @@ if(!file.exists(path_to_tidy_data)){
 
 # reading in additionality
 
-additionality <- read.csv(paste0('./data/',project_name,'additionality.csv'))
+additionality <- read.csv(file.path(data_path,'additionality.csv'))
 
 ```
 
-```{r read_stopping_criteria, echo=FALSE}
-
-# reading in stopping criteria
-
-stopping <- read.csv(paste0('./data/stopping.csv'))
-
-
-```
 
 ```{r get_shapefile_area, echo=FALSE}
 
 # extracting area of shapefile
   
-project_area_ha <- as.numeric(sum(st_area(shapefile))/10000)
+project_area_ha <- as.numeric(sum(st_area(st_make_valid(shapefile)))/10000)
 
 
 ```
@@ -229,34 +247,33 @@ The following sections will detail how we arrived at the additionality results, 
 
 \
 
-### Number of iterations
-
-```{r echo=FALSE, message=FALSE}
-
-# INCLUDE CODE FOR NO. OF ITERATIONS HERE
-
-```
-
-
 ### Location of matched points
 
 We sampled `r format((nrow(data)/2), big.mark = ",", scientific = FALSE, digits = 3)` points within the project and an equal number of matching points from outside of the project. These matching points serve as our counterfactual scenario for deforestation.
 
 Below we show the location of the counterfactual matching points (shown in blue) relative to the project (shown in red), both at the country and project scale.
 
+`r if(nrow(data) > 20000){"Note that, for clarity and computational efficiency, we show only 10% of the points."}`
+
 \
 
 ```{r match_locations, warning=FALSE, echo=FALSE, message=FALSE}
 
+# downsample no. of points by 90%
+
+if(nrow(data) > 20000){
+  data_forplot <- data %>% sample_frac(0.1)
+} else {
+  data_forplot <- data
+}
+
 # plot location of matching points
 
-world <- fortify(map("worldHires", fill=TRUE, plot=FALSE))
-country_map <- world %>% filter(region==country)
+country_map <- ne_countries(country = country, returnclass = "sf")
 
-ggplot(data,aes(x=lng,y=lat,colour=type)) + 
-  geom_map(data=country_map,map=country_map,aes(x=long,y=lat,map_id=region),
-           colour='black',fill='grey90',linewidth=1.2)+
-  geom_point(alpha=0.5) + 
+ggplot(data=country_map) + 
+  geom_sf(colour='black',fill='grey90',linewidth=1.2)+
+  geom_point(data=data_forplot,mapping=aes(x=lng,y=lat,colour=type),alpha=0.5) + 
   geom_sf(data=shapefile,fill='red',colour=NA,inherit.aes=F)+
   scale_color_manual(values=c('blue','red'))+
   coord_sf()+
@@ -270,10 +287,9 @@ xmax <- filter(data, type=='Project') %>% select(lng) %>% max()
 ymin <- filter(data, type=='Project') %>% select(lat) %>% min()
 ymax <- filter(data, type=='Project') %>% select(lat) %>% max()
 
-ggplot(data,aes(x=lng,y=lat,colour=type)) + 
-  geom_map(data=country_map,map=country_map,aes(x=long,y=lat,map_id=region),
-           colour='black',fill='grey90',linewidth=1.2)+
-  geom_point(alpha=0.5) + 
+ggplot(data=country_map) + 
+  geom_sf(colour='black',fill='grey90',linewidth=1.2)+
+  geom_point(data=data_forplot,mapping=aes(x=lng,y=lat,colour=type),alpha=0.5) + 
   geom_sf(data=shapefile,fill='red',colour=NA,inherit.aes=F)+
   scale_color_manual(values=c('blue','red'))+
   coord_sf(xlim=c(xmin-0.5,xmax+0.5),ylim=c(ymin-0.5,ymax+0.5))+
@@ -284,8 +300,6 @@ ggplot(data,aes(x=lng,y=lat,colour=type)) +
         legend.position='none')
 
 ```
-
-\
 
 ### Quality of matches
 
@@ -325,7 +339,7 @@ More information about the datasets we use can be found below:
 
 # plot matches
 
-source(paste0(homedir,'/scripts/plot_matchingvars.R'))
+source(file.path(script_path,'plot_matchingvars.R'))
 
 plot_matching_variables(data)
 
@@ -341,51 +355,19 @@ In the below plot, the blue points indicate the SMD value (i.e. the amount of di
 
 \
 
-```{r smd, echo=FALSE, warning=FALSE,message=FALSE}
+```{r smd}
 
-source(paste0(homedir,'/scripts/std_mean_diff.R'))
+source(file.path(script_path,'std_mean_diff.R'))
 
-# cacheing results
-
-if(file.exists('std_mean_diff.csv')){
-  std_mean_diff_results <- read.csv('std_mean_diff.csv')
-} else {
-  std_mean_diff_results <- std_mean_diff(data,start_year)
-  write.csv(std_mean_diff_results,'std_mean_diff.csv',row.names=F)
-}
-
-
-# standardising variable names
-
-std_mean_diff_std <- data.frame(std_mean_diff_results)
-std_mean_diff_std$variable <- as.character(std_mean_diff_std$variable)
-
-
-  start_pos <- 1
-
-  std_mean_diff_std[start_pos,1] <- 'JRC_1_t0'
-  std_mean_diff_std[start_pos+1,1] <- 'JRC_1_t-5'
-  std_mean_diff_std[start_pos+2,1] <- 'JRC_1_t-10'
-
-  std_mean_diff_std[start_pos+3,1] <- 'JRC_3_t0'
-  std_mean_diff_std[start_pos+4,1] <- 'JRC_3_t-5'
-  std_mean_diff_std[start_pos+5,1] <- 'JRC_3_t-10'
-
-
-# ordering variables
-
-std_mean_diff_std$variable <- factor(std_mean_diff_std$variable,
-                                     levels=c('JRC_3_t-10','JRC_3_t-5','JRC_3_t0',
-                                              'JRC_1_t-10','JRC_1_t-5','JRC_1_t0',
-                                              'access','slope','elevation'))
+results <- std_mean_diff(path_to_pairs)
 
 # changing sign for interpretation
 
-std_mean_diff_std$std_mean_diff <- (-1)*std_mean_diff_std$std_mean_diff
+results$smd <- (-1)*results$smd
 
 # plotting
 
-std_mean_diff_plot <- ggplot(std_mean_diff_std,aes(x=std_mean_diff,y=variable))+
+ ggplot(results,aes(x=smd,y=variable))+
   #geom_boxplot(outlier.shape=NA,colour='blue')+
   geom_point(colour='blue',fill='blue',alpha=0.3,size=4)+
   geom_vline(xintercept=0)+
@@ -407,10 +389,6 @@ std_mean_diff_plot <- ggplot(std_mean_diff_std,aes(x=std_mean_diff,y=variable))+
         legend.position='none',
         text=element_text(size=20),
         axis.text.y=element_text(size=20))
-
-std_mean_diff_plot
-
-
 
 
 ```
@@ -441,7 +419,7 @@ Data from [JRC tropical moist forest dataset](https://forobs.jrc.ec.europa.eu/TM
 
 # plot deforestation within project
 
-source(paste0(homedir,'/scripts/plot_transitions.R'))
+source(file.path(script_path,'plot_transitions.R'))
 
 plot_transitions(data=data,t0=start_year,period_length=evaluation_year-start_year,shapefile=shapefile)
 
@@ -460,7 +438,7 @@ Here we compare various deforestation processes between the project and counterf
 
 # obtaining the area of undisturbed and degraded forest at t0, for use later
 
-source(paste0(homedir,'/scripts/def_rate.R'))
+source(file.path(script_path,'def_rate.R'))
 
 prop_und <- get_prop_undisturbed(data=data,t0=start_year)
 prop_deg <- get_prop_degraded(data=data,t0=start_year)
@@ -473,7 +451,7 @@ First we can calculate the average annual rate at which undisturbed forest is lo
 
 ```{r rate_of_forest_loss_percent, echo=FALSE}
 
-source(paste0(homedir,'/scripts/def_rate.R'))
+source(file.path(script_path,'def_rate.R'))
   
 df <- def_rate(data=data,t0=start_year,period_length=evaluation_year-start_year)
 
@@ -500,7 +478,7 @@ The rate of forest loss can be broken down into more specific processes, present
 
 ```{r separate_deforestation_processes_percent, echo=FALSE}
 
-source(paste0(homedir,'/scripts/def_rate.R'))
+source(file.path(script_path,'def_rate.R'))
   
 df_sep <- def_rate_seperate(data=data,t0=start_year,period_length=evaluation_year-start_year)
 
@@ -550,7 +528,7 @@ df_ha %>% t() %>% data.frame() %>% rename('Rate of forest loss (ha/year)' = 1)
 
 ```{r separate_deforestation_processes_ha, echo=FALSE}
 
-source(paste0(homedir,'/scripts/def_rate.R'))
+source(file.path(script_path,'def_rate.R'))
 
 df_sep_ha <- df_sep
 
@@ -573,7 +551,7 @@ In the below plots, the vertical grey dashed line represents the start year of t
 
 ```{r luc_timeseries_all, echo=FALSE}
 
-source(paste0(homedir,'/scripts/land_cover_timeseries.R'))
+source(file.path(script_path,'land_cover_timeseries.R'))
 
 df <- get_luc_timeseries(data,t0=start_year,tend=evaluation_year)
 
@@ -605,16 +583,18 @@ Here the trajectories are shown in red (project) and blue (counterfactual). They
 
 ```{r luc_timeseries, echo=FALSE}
 
-source(paste0(homedir,'/scripts/land_cover_timeseries.R'))
+source(file.path(script_path,'land_cover_timeseries.R'))
 
 # caching result of land cover time series
 
-if (file.exists('luc_timeseries.csv')) {
-  result <- read.csv('luc_timeseries.csv')
+
+if (file.exists(file.path(output_path,'luc_timeseries.csv'))) {
+  result <- read.csv(file.path(output_path,'luc_timeseries.csv'))
 } else {
   result <- luc_class1_uncertainty(data=data, t0=start_year, tend=evaluation_year)
-  write.csv(result,'luc_timeseries.csv',row.names=F)
+  write.csv(result,file.path(output_path,'luc_timeseries.csv'),row.names=F)
 }
+
 
 # calculating stats + plotting
 
@@ -653,7 +633,7 @@ More information on GEDI data is available [here](https://www.earthdata.nasa.gov
 
 ```{r carbon_density, echo=FALSE}
 
-carbon_density <- read.csv(paste0(path,'/data/',project_name,'carbon-density.csv'))
+carbon_density <- read.csv(file.path(data_path,'carbon-density.csv'))
 
 carbon_density <- carbon_density %>% mutate(
   land.use.class = case_when(
@@ -678,18 +658,22 @@ The additionality summary presented at the top of this document is based on the 
 
 \
 
-### Stability of results
 
-We can evaluate the stability of the results generated by the pipeline. This graph shows the variability of the result over the 100 iterations that the pipeline generates. For results to be valid, we would expect the variability to be close to 0 by the time the 100 iterations have finished.
+`r  if(file.exists(file.path(data_path,'stopping.csv'))){"### Stability of results\n\n We can evaluate the stability of the results generated by the pipeline. This graph shows the variability of the result over the 100 iterations that the pipeline generates. For results to be valid, we would expect the variability to be close to 0 by the time the 100 iterations have finished."}`
 
 ```{r stopping, echo=FALSE}
 
-stopping %>% ggplot(aes(x = iteration, y = stable)) +
+if(file.exists(file.path(data_path,'stopping.csv'))){
+  stopping <- read.csv(file.path(data_path,'stopping.csv'))
+  
+  stopping %>% ggplot(aes(x = iteration, y = stable)) +
   geom_hline(yintercept = 0, alpha = 0.4, linetype = 'dashed') +
   geom_line() +
   xlab('Iteration') +
   ylab('Variability')+
   theme_classic()
+}
+
 
 ```
 
