@@ -1,6 +1,4 @@
 ---
-title: "4C Ex-Post Evaluation for [PROJECT NAME]"
-subtitle: "Project Proponent: [PROJECT PROPONENT]"
 output:
   html_document:
     theme: spacelab
@@ -9,167 +7,157 @@ output:
     toc_float: yes
   pdf_document:
     toc: yes
+params:
+  proj: null
+  t0: null
+  eval_year: 2022
+  input_dir: null
+  output_dir: null
+  evaluations_dir: "~/evaluations"
+  country: null
 ---
 
 ```{r settings, include=FALSE}
 knitr::opts_chunk$set(
-  echo = FALSE, warning=FALSE,message=FALSE
-)
+  echo = FALSE, warning=FALSE,message=FALSE)
 
 library(tidyverse)
 library(sf)
 library(reshape2)
-library(ggspatial)
 library(maps)
 library(mapdata)
+library(ggspatial)
 library(arrow)
 library(rnaturalearth)
 library(rnaturalearthdata)
+library(stringr)
+library(jsonlite)
+library(countrycode)
 
 ```
 
 ```{r inputs, echo=FALSE,warning=FALSE, message=FALSE}
 
-# FILL IN THE TITLE AND THE SECTION BELOW 
+# IF RUNNING THIS NOTEBOOK MANUALLY, SET THE FOLLOWING PARAMETERS
 
-project_name <- '' # the short name used for the files, e.g. gola
-project_fullname <- '' # the full name to be used in the text, e.g. Gola Protected Area
-country <- '' # country must correspond to a country in the naturalearthdata package. Check by running from the console:
-start_year <- '' # as numeric
-evaluation_year <- '' # as numeric
-homedir <- ('C:/Users/Abby Williams/OneDrive - University of Cambridge/evaluations') # path to your evaluations folder
-# 
-```
-
-```{r directory_structure, echo=FALSE,warning=FALSE, message=FALSE}
-
-# set up necessary paths
-
-script_path <- paste0(homedir,'/scripts')
-supplier_path <- paste0(homedir,'/suppliers/',project_name)
-data_path <- paste0(supplier_path,'/data')
-output_path <- paste0(supplier_path,'/outputs')
-shapefile <- read_sf(paste0(homedir,'/shapefiles/',project_name,'.geojson'))
-
-path_list <- c(supplier_path,data_path,output_path)
-for(i in path_list){
-  if(!dir.exists(i))
-    dir.create(i)
-}
-
+project_name <- params$proj
+start_year <- as.numeric(params$t0)
+evaluation_year <- as.numeric(params$eval_year)
+shapefile_dir <- params$input_dir # path to directory in which the project shapefile is located
+tmf_output_dir <- params$output_dir # path to tmf output directory
+evaluations_dir <- params$evaluations_dir # path to evaluations directory
 
 ```
 
-```{r sherwood_commands, include=FALSE}
+---
+title: "`r paste0('4C Ex-Post Evaluation: ',(project_name %>% str_replace_all("_", " ") %>% str_to_title()))`"
+---
 
-# FILL IN YOUR CRSID AND RUN THIS CHUNK
+```{r set_paths, echo=FALSE,warning=FALSE, message=FALSE}
 
-crsid <- 'aew85'
-
-paths <- c(
-  "Upload shapefile: scp \"[PATH]/shapefiles/[PROJECT NAME].geojson\" sherwood:/maps/[YOUR CRSID]/projects",
-  "Download additionality: scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/additionality.csv \"[PATH]/suppliers/[PROJECT NAME]/data\"",
-  "Download carbon density: scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/carbon-density.csv \"[PATH]/suppliers/[PROJECT NAME]/data\"",
-  "Download pairs: scp -r sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/pairs \"[PATH]/suppliers/[PROJECT NAME]/data\"",
-  "Download stability (optional): scp sherwood:/maps/[YOUR CRSID]/tmf_pipe_out/[PROJECT NAME]/stopping.csv \"[PATH]/suppliers/[PROJECT NAME]/data\""
-)
-
-paths_replaced <- gsub("\\[YOUR CRSID\\]", crsid, paths)
-paths_replaced <- gsub("\\[PATH\\]", homedir, paths_replaced)
-paths_replaced <- gsub("\\[PROJECT NAME\\]", project_name, paths_replaced)
-
-paths_result <- paste(paths_replaced, collapse = "\n")
-
-# NOW RUN cat(paths_result) FROM THE CONSOLE TO PRINT THE PATHS
+script_path <- paste0(evaluations_dir,'/scripts')
+data_path <- paste0(tmf_output_dir,'/',project_name)
+shapefile <- read_sf(paste0(shapefile_dir,'/',project_name,'.geojson'))
 
 ```
-
 
 ```{r read_pairs, echo=FALSE}
 
 # reading in the pairs
 
 path_to_pairs <- file.path(data_path,'pairs')
+  
+# get filenames and filter for matched points
 
-if(!file.exists(file.path(output_path,'tidy_data.csv'))){
-  
-  # get filenames and filter for matched points
-  
-  files_full_raw <- list.files(path_to_pairs,
-                           pattern='*.parquet',full.names=T,recursive=F)
-  files_full <- files_full_raw[!grepl('matchless',files_full_raw)]
-  files_short_raw <- list.files(path=path_to_pairs,
-                            pattern='*.parquet',full.names=F,recursive=F)
-  files_short <- files_short_raw[!grepl('matchless',files_short_raw)]
-  
-  # initialise dfs
-  
-  vars <- c(colnames(read_parquet(files_full[1])),'pair')
-  paired_data_raw <- data.frame(matrix(ncol=length(vars),nrow=0))
-  colnames(paired_data_raw) <- vars
-  paired_data_raw$pair <- as.factor(paired_data_raw$pair)
-  
-  for(j in 1:length(files_full)){
-    
-    # read in all parquet files for a given project
-    
-    f <- data.frame(read_parquet(files_full[j]))
-    
-    # add identity column
-    
-    f$pair <- as.factor(c(replicate(nrow(f),files_short[j])))
-    
-    # append data to bottom of df
-    
-    paired_data_raw <- bind_rows(paired_data_raw,f)
-    
-  }
-  
-  # generate separate datasets for project and counterfactual 
-  
-  project <- paired_data_raw %>% dplyr::select(starts_with('k'),pair)
-  cf <- paired_data_raw %>% dplyr::select(starts_with('s'),pair)
-  
-  # create project-counterfactual merged dataset
-  
-  colnames(cf) <- colnames(project)
-  pair_merged <- bind_rows(project,cf)
-  names(pair_merged) <- str_sub(names(pair_merged),3)
-  names(pair_merged)[names(pair_merged) == "ir"] <- "pair"
-  data <- pair_merged %>% select_if(~ !any(is.na(.)))
+files_full_raw <- list.files(path_to_pairs,
+                          pattern='*.parquet',full.names=T,recursive=F)
+files_full <- files_full_raw[!grepl('matchless',files_full_raw)]
+files_short_raw <- list.files(path=path_to_pairs,
+                          pattern='*.parquet',full.names=F,recursive=F)
+files_short <- files_short_raw[!grepl('matchless',files_short_raw)]
 
-  # merge reference data to cf-counterfactual merged dataset with type column
+# initialise dfs
 
-  type <- c(replicate(nrow(project),'Project'),replicate(nrow(cf),'Counterfactual'))
-  data$type <- type
+vars <- c(colnames(read_parquet(files_full[1])),'pair')
+paired_data_raw <- data.frame(matrix(ncol=length(vars),nrow=0))
+colnames(paired_data_raw) <- vars
+paired_data_raw$pair <- as.factor(paired_data_raw$pair)
+
+for(j in 1:length(files_full)){
   
-  # write data to csv
+  # read in all parquet files for a given project
   
-  write.csv(data,file.path(output_path,'tidy_data.csv'),row.names=F)
+  f <- data.frame(read_parquet(files_full[j]))
   
-} else {
+  # add identity column
   
-  data <- read.csv(file.path(output_path,'tidy_data.csv'))
+  f$pair <- as.factor(c(replicate(nrow(f),files_short[j])))
+  
+  # append data to bottom of df
+  
+  paired_data_raw <- bind_rows(paired_data_raw,f)
   
 }
 
+# generate separate datasets for project and counterfactual 
+
+project <- paired_data_raw %>% dplyr::select(starts_with('k'),pair)
+cf <- paired_data_raw %>% dplyr::select(starts_with('s'),pair)
+
+# create project-counterfactual merged dataset
+
+colnames(cf) <- colnames(project)
+pair_merged <- bind_rows(project,cf)
+names(pair_merged) <- str_sub(names(pair_merged),3)
+names(pair_merged)[names(pair_merged) == "ir"] <- "pair"
+data <- pair_merged %>% select_if(~ !any(is.na(.)))
+
+# merge reference data to cf-counterfactual merged dataset with type column
+
+type <- c(replicate(nrow(project),'Project'),replicate(nrow(cf),'Counterfactual'))
+data$type <- type
 
 ```
 
 ```{r read_additionality, echo = FALSE}
 
-# reading in additionality
-
-additionality <- read.csv(file.path(data_path,'additionality.csv'))
+additionality <- read.csv(list.files(path = data_path, pattern = "additionality", full.names = TRUE))
 
 ```
 
 
 ```{r get_shapefile_area, echo=FALSE}
-
-# extracting area of shapefile
   
 project_area_ha <- as.numeric(sum(st_area(st_make_valid(shapefile)))/10000)
+
+```
+
+```{r}
+
+# define function for extracting country names 
+
+if (!is.null(params$country)) {
+  country_vec <- c(params$country)
+} else {
+
+  get_country_names <- function(country_codes_path) {
+    codes <- as.character(fromJSON(country_codes_path))
+    country_names <- countrycode(codes, 'iso2c', 'country.name')
+    return(country_names)
+  }
+
+  # read in country json and get names
+  country_vec <- get_country_names(list.files(path = data_path, pattern = "country-list", full.names = TRUE))
+}
+
+  # define function for printing the country names if there are multiple
+
+  if (length(country_vec) > 1) {
+    country_string <- paste(country_vec[-length(country_vec)], collapse = ", ")
+    country_string <- paste(country_string, "and", country_vec[length(country_vec)])
+  } else {
+    country_string <- country_vec[1]
+  }
 
 
 ```
@@ -178,7 +166,7 @@ project_area_ha <- as.numeric(sum(st_area(st_make_valid(shapefile)))/10000)
 
 # About the project
 
-`r project_fullname` is located in `r country`. The project started in `r start_year` and has an area of `r format(project_area_ha, big.mark = ",", scientific = FALSE, digits = 3)` hectares.
+`r project_name %>% str_replace_all("_", " ") %>% str_to_title()` is located in `r country_string`. The project started in `r start_year` and has an area of `r format(project_area_ha, big.mark = ",", scientific = FALSE, digits = 3)` hectares.
 
 ```{r echo=FALSE}
 
@@ -269,7 +257,7 @@ if(nrow(data) > 20000){
 
 # plot location of matching points
 
-country_map <- ne_countries(country = country, returnclass = "sf")
+country_map <- ne_countries(country = country_vec, returnclass = "sf")
 
 ggplot(data=country_map) + 
   geom_sf(colour='black',fill='grey90',linewidth=1.2)+
@@ -399,17 +387,17 @@ results$smd <- (-1)*results$smd
 
 Now focusing on deforestation within the project, we can examine the spatial distribution of the following 4 processes pertinent to forest carbon stock changes:
 
--   Undisturbed forest to degraded forest (yellow)
+-   Undisturbed forest to degraded forest 
 
--   Degraded forest to deforested land (orange)
+-   Degraded forest to deforested land 
 
--   Undisturbed forest to deforested land (red)
+-   Undisturbed forest to deforested land 
 
--   Undisturbed land to reforested land (did not occur in the period examined)
+-   Undisturbed land to reforested land
 
 \
 
-These transitions are shown in the plot below for the `r evaluation_year-start_year`-year period between `r start_year` and `r evaluation_year`. They are overlaid on the project area, shown in grey.
+These transitions are shown in the plot below for the `r evaluation_year-start_year`-year period between `r start_year` and `r evaluation_year`. They are overlaid on the project area, shown in grey. If a transition is not shown, it did not occur in the period examined.
 
 Data from [JRC tropical moist forest dataset](https://forobs.jrc.ec.europa.eu/TMF).
 
@@ -498,7 +486,7 @@ $$
 
 \
 
-It is necessary to correct for the amount of each forest type (undisturbed or degraded) present at the beginning of the project. For `r project_fullname` these proportions are as follows:
+It is necessary to correct for the amount of each forest type (undisturbed or degraded) present at the beginning of the project. For this project these proportions are as follows:
 
 -   Undisturbed forest: `r format(100*prop_und, digits = 3)`%
 
@@ -586,15 +574,7 @@ Here the trajectories are shown in red (project) and blue (counterfactual). They
 source(file.path(script_path,'land_cover_timeseries.R'))
 
 # caching result of land cover time series
-
-
-if (file.exists(file.path(output_path,'luc_timeseries.csv'))) {
-  result <- read.csv(file.path(output_path,'luc_timeseries.csv'))
-} else {
-  result <- luc_class1_uncertainty(data=data, t0=start_year, tend=evaluation_year)
-  write.csv(result,file.path(output_path,'luc_timeseries.csv'),row.names=F)
-}
-
+result <- luc_class1_uncertainty(data=data, t0=start_year, tend=evaluation_year)
 
 # calculating stats + plotting
 
