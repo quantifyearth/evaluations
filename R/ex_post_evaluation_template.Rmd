@@ -16,7 +16,7 @@ params:
   evaluations_dir: "~/evaluations"
   country: null
   fullname: null
-  shapefile_dir: null
+  shapefile_path: null
 ---
 
 ```{r settings, include=FALSE}
@@ -45,8 +45,8 @@ library(countrycode)
 project_name <- params$proj
 start_year <- as.numeric(params$t0)
 evaluation_year <- as.numeric(params$eval_year)
-input_dir <- params$input_dir # path to directory in which the project shapefile is located
-tmf_output_dir <- params$output_dir # path to tmf output directory
+input_dir <- params$input_dir # path to tmf-implementation inputs, i.e. the directory in which the project shapefile is located
+tmf_output_dir <- params$output_dir # path to tmf-implementation output directory
 evaluations_dir <- params$evaluations_dir # path to evaluations directory
 
 ```
@@ -60,10 +60,13 @@ title: "`r paste0('4C Ex-Post Evaluation: ', if (!is.null(params$fullname)) { pa
 script_path <- paste0(evaluations_dir,'/scripts')
 data_path <- paste0(tmf_output_dir,'/',project_name)
 
-if (!is.null(params$shapefile_dir)) {
-  shapefile_dir <- c(params$shapefile_dir)
-} else { shapefile_dir <- paste0(input_dir,'/',project_name,'.geojson') }
-shapefile <- read_sf(shapefile_dir)
+# get shapefile from shapefile_path if supplied
+# else use tmf input dir
+
+if (!is.null(params$shapefile_path)) {
+  shapefile_path <- c(params$shapefile_path)
+} else { shapefile_path <- paste0(input_dir,'/',project_name,'.geojson') }
+shapefile <- read_sf(shapefile_path)
 
 ```
 
