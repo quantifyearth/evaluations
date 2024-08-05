@@ -40,7 +40,7 @@ library(countrycode)
 
 ```{r}
 
-# TO KNIT THIS NOTEBOOK, RUN THE FOLLOWING LINE IN A POWERSHELL TERMINAL:
+# TO KNIT THIS NOTEBOOK, RUN THE FOLLOWING LINE IN A SHELL TERMINAL:
 
 # Rscript -e "rmarkdown::render(input='~/evaluations/R/ex_post_evaluation_template.Rmd', output_file='~/evaluations/R/example_project.html', params=list(proj='example_project', t0=2010, eval_year=2022, input_dir='/maps/aew85/projects', output_dir='/maps/aew85/tmf_pipe_out', evaluations_dir='~/evaluations'))"
 
