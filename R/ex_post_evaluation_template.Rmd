@@ -15,6 +15,8 @@ params:
   output_dir: null
   evaluations_dir: "~/evaluations"
   country: null
+  fullname: null
+  shapefile_dir: null
 ---
 
 ```{r settings, include=FALSE}
@@ -36,6 +38,15 @@ library(countrycode)
 
 ```
 
+```{r}
+
+# TO KNIT THIS NOTEBOOK, RUN THE FOLLOWING LINE IN A POWERSHELL TERMINAL:
+
+# Rscript -e "rmarkdown::render(input='~/evaluations/R/ex_post_evaluation_template.Rmd', output_file='~/evaluations/R/example_project.html', params=list(proj='example_project', t0=2010, eval_year=2022, input_dir='/maps/aew85/projects', output_dir='/maps/aew85/tmf_pipe_out', evaluations_dir='~/evaluations'))"
+
+```
+
+
 ```{r inputs, echo=FALSE,warning=FALSE, message=FALSE}
 
 # IF RUNNING THIS NOTEBOOK MANUALLY, SET THE FOLLOWING PARAMETERS
@@ -43,25 +54,31 @@ library(countrycode)
 project_name <- params$proj
 start_year <- as.numeric(params$t0)
 evaluation_year <- as.numeric(params$eval_year)
-shapefile_dir <- params$input_dir # path to directory in which the project shapefile is located
+input_dir <- params$input_dir # path to directory in which the project shapefile is located
 tmf_output_dir <- params$output_dir # path to tmf output directory
 evaluations_dir <- params$evaluations_dir # path to evaluations directory
 
 ```
 
 ---
-title: "`r paste0('4C Ex-Post Evaluation: ',(project_name %>% str_replace_all("_", " ") %>% str_to_title()))`"
+title: "`r paste0('4C Ex-Post Evaluation: ', if (!is.null(params$fullname)) { params$fullname } else { gsub('_', ' ', project_name) %>% stringr::str_to_title() })`"
 ---
 
 ```{r set_paths, echo=FALSE,warning=FALSE, message=FALSE}
 
 script_path <- paste0(evaluations_dir,'/scripts')
 data_path <- paste0(tmf_output_dir,'/',project_name)
-shapefile <- read_sf(paste0(shapefile_dir,'/',project_name,'.geojson'))
+
+if (!is.null(params$shapefile_dir)) {
+  shapefile_dir <- c(params$shapefile_dir)
+} else { shapefile_dir <- paste0(input_dir,'/',project_name,'.geojson') }
+shapefile <- read_sf(shapefile_dir)
 
 ```
 
 ```{r read_pairs, echo=FALSE}
+
+# DEPENDING ON THE STRUCTURE OF THE OUTPUT DATA, THIS SECTION MAY NEED EDITING
 
 # reading in the pairs
 
@@ -132,7 +149,7 @@ project_area_ha <- as.numeric(sum(st_area(st_make_valid(shapefile)))/10000)
 
 ```
 
-```{r}
+```{r get_country_names}
 
 # define function for extracting country names 
 
@@ -143,6 +160,7 @@ if (!is.null(params$country)) {
   get_country_names <- function(country_codes_path) {
     codes <- as.character(fromJSON(country_codes_path))
     country_names <- countrycode(codes, 'iso2c', 'country.name')
+    country_names[country_names == 'Congo - Kinshasa'] <- 'Democratic Republic of the Congo'
     return(country_names)
   }
 
@@ -257,7 +275,11 @@ if(nrow(data) > 20000){
 
 # plot location of matching points
 
-country_map <- ne_countries(country = country_vec, returnclass = "sf")
+country_map <- ne_countries(country = country_vec, returnclass = "sf", scale= "large")
+
+# transform crs
+
+shapefile <- st_transform(shapefile, st_crs(country_map))
 
 ggplot(data=country_map) + 
   geom_sf(colour='black',fill='grey90',linewidth=1.2)+
@@ -428,8 +450,8 @@ Here we compare various deforestation processes between the project and counterf
 
 source(file.path(script_path,'def_rate.R'))
 
-prop_und <- get_prop_undisturbed(data=data,t0=start_year)
-prop_deg <- get_prop_degraded(data=data,t0=start_year)
+prop_und <- get_prop_class(data=data,t0=start_year-10,class=1,type_value='Project')
+prop_deg <- get_prop_class(data=data,t0=start_year-10,class=2,type_value='Project')
 
 ```
 

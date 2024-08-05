@@ -205,30 +205,16 @@ def_rate_seperate <- function(data,t0,period_length){
   
 }
 
-get_prop_undisturbed <- function(data,t0){
+get_prop_class <- function(data,t0,type_value,class){
   
   t0_index <- grep(paste0('luc_',t0),colnames(data))
-  data_filtered <- data[data[,t0_index]==1,]
+  data_filtered <- data[data[,t0_index]==class,]
   
-  proj_total <- data %>% filter(type=='Project') %>% nrow()
-  proj_1s <- data_filtered %>% filter(type=='Project') %>% nrow()
-  prop_proj <- proj_1s/proj_total
+  total_count <- data %>% filter(type==type_value) %>% nrow()
+  class_count <- data_filtered %>% filter(type==type_value) %>% nrow()
+  prop <- class_count/total_count
   
-  return(prop_proj)
-  
-}
-
-
-get_prop_degraded <- function(data,t0){
-  
-  t0_index <- grep(paste0('luc_',t0),colnames(data))
-  data_filtered <- data[data[,t0_index]==2,]
-  
-  proj_total <- data %>% filter(type=='Project') %>% nrow()
-  proj_2s <- data_filtered %>% filter(type=='Project') %>% nrow()
-  prop_proj <- proj_2s/proj_total
-  
-  return(prop_proj)
+  return(prop)
   
 }
 
