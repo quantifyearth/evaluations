@@ -12,5 +12,6 @@ suppliers/
 MISC/
 shapefiles/
 /scripts/*OLD*
-/R
+/R/*
 !R/ex_post_evaluation_template.Rmd
+!R/ex_ante_evaluation_template.Rmd

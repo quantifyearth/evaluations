@@ -1,7 +1,7 @@
 
 get_luc_timeseries <- function(data,t0,tend,type='both'){
   
-  years_list <- seq(t0-10,tend)
+  years_list <- seq(t0,tend)
 
   if(type=='both'){
 
@@ -36,9 +36,9 @@ get_luc_timeseries <- function(data,t0,tend,type='both'){
       
     }
 
-  } else if(type=='cf_only'){
+  } else if(type=='single'){
 
-    df <- data.frame(matrix(ncol=3,nrow=8*length(years_list)))
+    df <- data.frame(matrix(ncol=3,nrow=4*length(years_list)))
   
     colnames(df) <- c('year','luc','percentage')
     
@@ -66,7 +66,7 @@ get_luc_timeseries <- function(data,t0,tend,type='both'){
 
   }
 
-  return(df)
+  return(drop_na(df))
   
 }
 
@@ -105,7 +105,7 @@ luc_class1_uncertainty <- function(data,t0,tend) {
     
   }
   
-  return(df)
+  return(drop_na(df))
 
 }
 
