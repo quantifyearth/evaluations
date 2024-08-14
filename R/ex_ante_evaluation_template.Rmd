@@ -13,7 +13,6 @@ params:
   input_dir: null
   output_dir: null
   fullname: null
-  country: null
   country_path: null
   shapefile_path: null
   pairs_path: null
@@ -26,8 +25,9 @@ params:
 
 # Rscript -e "rmarkdown::render(input='~/evaluations/R/ex_ante_evaluation_template.Rmd', output_file='~/evaluations/R/example_project.html', params=list(proj='example_project', t0=2010, ...))"
 
-# mandatory args: proj, t0, input dir, output dir
-# optional args: fullname, country, country_path, shapefile path, pairs_path, carbon density path. Use these if your file naming system deviates from that specified
+# Mandatory args: proj, t0
+# Optional args: input dir, output dir, fullname, country_path, shapefile path, pairs_path, carbon density path
+# You must either specify input dir and output dir OR provide absolute paths to each of the objects required
 
 ```
 
@@ -84,6 +84,10 @@ if (!is.null(params$pairs_path)) {
 
 # read shapefile
 
+if (!is.null(params$input_dir)) {
+  input_dir <- params$input_dir 
+}
+
 if (!is.null(params$shapefile_path)) {
   shapefile_path <- params$shapefile_path
 } else { shapefile_path <- paste0(input_dir,'/',project_name,'.geojson') }
@@ -95,6 +99,12 @@ if (!is.null(params$carbon_density_path)) {
   carbon_density_path <- params$carbon_density_path
 } else { carbon_density_path <- list.files(data_path,pattern='carbon',full.names=T)[1] }
 carbon_density <- read.csv(carbon_density_path)
+
+# read country path
+
+if (!is.null(params$country_path)) {
+  country_path <- params$country_path
+} else { country_path <- list.files(path = data_path, pattern = "country-list", full.names = TRUE)}
 
 ```
 
@@ -166,20 +176,16 @@ project_area_ha <- as.numeric(sum(st_area(st_make_valid(shapefile)))/10000)
 
 # define function for extracting country names 
 
-if (!is.null(params$country)) {
-  country_vec <- c(params$country)
-} else {
-
-  get_country_names <- function(country_codes_path) {
+get_country_names <- function(country_codes_path) {
     codes <- as.character(fromJSON(country_codes_path))
     country_names <- countrycode(codes, 'iso2c', 'country.name')
     country_names[country_names == 'Congo - Kinshasa'] <- 'Democratic Republic of the Congo'
     return(country_names)
   }
 
-  # read in country json and get names
-  country_vec <- get_country_names(list.files(path = data_path, pattern = "country-list", full.names = TRUE))
-}
+# get country names
+
+country_vec <- get_country_names(country_path)
 
   # define function for printing the country names if there are multiple
 
@@ -545,7 +551,8 @@ proj_input <- proj_input[, !is.na(colnames(proj_input))]
 cf_input <- data %>% 
   filter(type=='Counterfactual') %>% 
   select(contains('luc')) %>% 
-  setNames(paste0("luc_", (start_year-20):start_year))
+  setNames(paste0("luc_", (start_year-20):start_year)) %>%
+  select(where(~ all(!is.na(.))))
 
 ```
 

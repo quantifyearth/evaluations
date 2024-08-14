@@ -34,6 +34,7 @@ library(rnaturalearthdata)
 library(stringr)
 library(jsonlite)
 library(countrycode)
+library(here)
 
 ```
 
@@ -55,7 +56,7 @@ title: "`r paste0('4C Ex-Post Evaluation: ', if (!is.null(params$fullname)) { pa
 
 ```{r set_paths, echo=FALSE,warning=FALSE, message=FALSE}
 
-script_path <- ('./scripts')
+script_path <- here('scripts')
 data_path <- paste0(tmf_output_dir,'/',project_name)
 
 # get shapefile from shapefile_path if supplied
