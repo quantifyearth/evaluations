@@ -13,10 +13,26 @@ params:
   eval_year: 2022
   input_dir: null
   output_dir: null
-  country: null
   fullname: null
   shapefile_path: null
+  country_path: null
+  pairs_path: null
+  carbon_density_path: null
+  additionality_path: null
+  branch: null
 ---
+
+```{r include=FALSE}
+
+# TO KNIT THIS NOTEBOOK, RUN THE FOLLOWING LINE IN A POWERSHELL TERMINAL:
+
+# Rscript -e "rmarkdown::render(input='~/evaluations/R/ex_post_evaluation_template.Rmd', output_file='~/evaluations/R/example_project.html', params=list(proj='example_project', t0=2010, ...))"
+
+# mandatory args: proj, t0, eval year
+# optional args: input dir, output dir, fullname, country_path, shapefile path, pairs_path, carbon density path
+# You must either specify input dir and output dir OR provide absolute paths to each of the objects required
+
+```
 
 ```{r settings, include=FALSE}
 knitr::opts_chunk$set(
@@ -45,27 +61,57 @@ library(here)
 project_name <- params$proj
 start_year <- as.numeric(params$t0)
 evaluation_year <- as.numeric(params$eval_year)
-input_dir <- params$input_dir # path to tmf-implementation inputs, i.e. the directory in which the project shapefile is located
-tmf_output_dir <- params$output_dir # path to tmf-implementation output directory
+branch <- params$branch
 
 ```
 
 ---
 title: "`r paste0('4C Ex-Post Evaluation: ', if (!is.null(params$fullname)) { params$fullname } else { gsub('_', ' ', project_name) %>% stringr::str_to_title() })`"
+subtitle: "`r format(Sys.Date(), "%B %Y")`"
 ---
 
 ```{r set_paths, echo=FALSE,warning=FALSE, message=FALSE}
 
-script_path <- here('scripts')
-data_path <- paste0(tmf_output_dir,'/',project_name)
+# get script path
 
-# get shapefile from shapefile_path if supplied
-# else use tmf input dir
+script_path <- here('scripts')
+
+# get data path
+
+if (!is.null(params$output_dir)) {
+  data_path <- paste0(params$output_dir,'/',project_name)
+}
+
+# get path to pairs
+
+if (!is.null(params$pairs_path)) {
+  pairs_path <- params$pairs_path
+} else { pairs_path <- file.path(data_path,'pairs') }
+
+# read shapefile
+
+if (!is.null(params$input_dir)) {
+  input_dir <- params$input_dir 
+}
 
 if (!is.null(params$shapefile_path)) {
-  shapefile_path <- c(params$shapefile_path)
+  shapefile_path <- params$shapefile_path
 } else { shapefile_path <- paste0(input_dir,'/',project_name,'.geojson') }
 shapefile <- read_sf(shapefile_path)
+
+# read carbon density
+
+if (!is.null(params$carbon_density_path)) {
+  carbon_density_path <- params$carbon_density_path
+} else { carbon_density_path <- list.files(data_path,pattern='carbon',full.names=T)[1] }
+carbon_density <- read.csv(carbon_density_path)
+
+# read country path
+
+if (!is.null(params$country_path)) {
+  country_path <- params$country_path
+} else { country_path <- list.files(path = data_path, pattern = "country-list", full.names = TRUE)}
+
 
 ```
 
@@ -195,15 +241,15 @@ if (!is.null(params$country)) {
 
 The 4C method for calculating the additionality of a project is based on pixel matching. This approach allows us to identify places which are similar to the project but are not protected. We can then measure deforestation in these places and use this as our counterfactual scenario (what would have happened in the absence of the project) against which we measure the impact that the project has had.
 
-More information about the 4C methodology can be found below.
+More information about 4C's approach can be found below.
+
+[Quantify Earth, an interactive platform which demonstrates our pixel-matching approach in action](https://quantify.earth/#/globe/1)
 
 [4C explainer page](https://4c.cst.cam.ac.uk/about/additionality-leakage-and-permanence)
 
-[Quantify Earth, an interactive platform which demonstrates our pixel-matching approach in action](https://staging.quantify.earth/#/1201)
-
 [Cambridge Carbon Impact: an evaluation of some existing carbon projects](https://www.cambridge.org/engage/coe/article-details/6409c345cc600523a3e778ae)
 
-[The full PACT methodology](https://www.cambridge.org/engage/api-gateway/coe/assets/orp/resource/item/647a14a14f8b1884b7b97b55/original/pact-tropical-moist-forest-accreditation-methodology.pdf)
+[The full PACT methodology](https://www.cambridge.org/engage/coe/article-details/657c8b819138d23161bb055f)
 
 \
 
@@ -672,4 +718,8 @@ Leakage and permanence are two factors that affect the long-term emissions reduc
 
 You can find out more about our plans to deal with leakage and permanence in our [explainer page](https://4c.cst.cam.ac.uk/about/additionality-leakage-and-permanence), and in [the full PACT methodology](https://www.cambridge.org/engage/api-gateway/coe/assets/orp/resource/item/647a14a14f8b1884b7b97b55/original/pact-tropical-moist-forest-accreditation-methodology.pdf).
 
-$$\\[1in]$$
+---
+
+### Reproducibility
+
+This report was generated on `r format(Sys.Date(), "%B %d, %Y")` using the `r branch` of the [tmf-implementation code](https://github.com/quantifyearth/tmf-implementation).
